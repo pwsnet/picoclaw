@@ -14,8 +14,16 @@ import (
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
+// PeerAgentInfo describes another agent visible to this agent.
+type PeerAgentInfo struct {
+	Name  string
+	Model string
+}
+
 type ContextBuilder struct {
 	workspace    string
+	agentName    string          // This agent's name
+	peerAgents   []PeerAgentInfo // Other agents available for delegation
 	skillsLoader *skills.SkillsLoader
 	memory       *MemoryStore
 	tools        *tools.ToolRegistry // Direct reference to tool registry
@@ -46,6 +54,12 @@ func NewContextBuilder(workspace string) *ContextBuilder {
 // SetToolsRegistry sets the tools registry for dynamic tool summary generation.
 func (cb *ContextBuilder) SetToolsRegistry(registry *tools.ToolRegistry) {
 	cb.tools = registry
+}
+
+// SetAgentInfo sets this agent's name and the list of peer agents available for delegation.
+func (cb *ContextBuilder) SetAgentInfo(name string, peers []PeerAgentInfo) {
+	cb.agentName = name
+	cb.peerAgents = peers
 }
 
 func (cb *ContextBuilder) getIdentity() string {
@@ -118,6 +132,19 @@ func (cb *ContextBuilder) BuildSystemPrompt() string {
 	bootstrapContent := cb.LoadBootstrapFiles()
 	if bootstrapContent != "" {
 		parts = append(parts, bootstrapContent)
+	}
+
+	// Multi-agent awareness
+	if len(cb.peerAgents) > 0 {
+		var sb strings.Builder
+		sb.WriteString("# Multi-Agent System\n\n")
+		sb.WriteString(fmt.Sprintf("You are agent **%s**.\n\n", cb.agentName))
+		sb.WriteString("The following peer agents are available. Use the `delegate` tool to send them tasks:\n\n")
+		for _, peer := range cb.peerAgents {
+			sb.WriteString(fmt.Sprintf("- **%s** (model: %s)\n", peer.Name, peer.Model))
+		}
+		sb.WriteString("\nWhen delegating, only provide the `agent` name and `task` description. The delegate tool handles routing automatically.")
+		parts = append(parts, sb.String())
 	}
 
 	// Skills - show summary, AI can read full content with read_file tool

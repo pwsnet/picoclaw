@@ -82,6 +82,21 @@ func NewAgentMultiplexer(cfg *config.Config, msgBus *bus.MessageBus) (*AgentMult
 		}
 	}
 
+	// Set peer agent info on each agent's context builder so the system
+	// prompt includes awareness of other agents available for delegation.
+	for name, agent := range mux.agents {
+		var peers []PeerAgentInfo
+		for peerName, peerAgent := range mux.agents {
+			if peerName != name {
+				peers = append(peers, PeerAgentInfo{
+					Name:  peerName,
+					Model: peerAgent.model,
+				})
+			}
+		}
+		agent.contextBuilder.SetAgentInfo(name, peers)
+	}
+
 	return mux, nil
 }
 
