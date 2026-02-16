@@ -373,6 +373,7 @@ func migrateHelp() {
 func agentCmd() {
 	message := ""
 	sessionKey := "cli:default"
+	agentName := ""
 
 	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
@@ -390,6 +391,11 @@ func agentCmd() {
 				sessionKey = args[i+1]
 				i++
 			}
+		case "-a", "--agent":
+			if i+1 < len(args) {
+				agentName = args[i+1]
+				i++
+			}
 		}
 	}
 
@@ -399,14 +405,29 @@ func agentCmd() {
 		os.Exit(1)
 	}
 
-	provider, err := providers.CreateProvider(cfg)
-	if err != nil {
-		fmt.Printf("Error creating provider: %v\n", err)
-		os.Exit(1)
-	}
+	var agentLoop *agent.AgentLoop
 
-	msgBus := bus.NewMessageBus()
-	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
+	if agentName != "" {
+		// Use a specific named agent
+		resolved := cfg.ResolveAgentConfig(agentName)
+		provider, err := providers.CreateProviderForAgent(cfg, resolved)
+		if err != nil {
+			fmt.Printf("Error creating provider for agent %q: %v\n", agentName, err)
+			os.Exit(1)
+		}
+		msgBus := bus.NewMessageBus()
+		agentLoop = agent.NewAgentLoopFromAgentConfig(resolved, cfg, msgBus, provider)
+		fmt.Printf("Using agent: %s (model: %s)\n", resolved.Name, resolved.Model)
+	} else {
+		// Default: use the defaults agent config (same as before)
+		provider, err := providers.CreateProvider(cfg)
+		if err != nil {
+			fmt.Printf("Error creating provider: %v\n", err)
+			os.Exit(1)
+		}
+		msgBus := bus.NewMessageBus()
+		agentLoop = agent.NewAgentLoop(cfg, msgBus, provider)
+	}
 
 	// Print agent startup info (only for interactive mode)
 	startupInfo := agentLoop.GetStartupInfo()
@@ -534,18 +555,50 @@ func gatewayCmd() {
 		os.Exit(1)
 	}
 
-	provider, err := providers.CreateProvider(cfg)
-	if err != nil {
-		fmt.Printf("Error creating provider: %v\n", err)
-		os.Exit(1)
+	msgBus := bus.NewMessageBus()
+
+	// Determine single-agent vs multi-agent mode
+	agentConfigs := cfg.GetAgentConfigs()
+	multiAgent := len(agentConfigs) > 1
+
+	// These are set depending on mode and used for cron/heartbeat/shutdown
+	var defaultAgentLoop *agent.AgentLoop
+	var mux *agent.AgentMultiplexer
+
+	if multiAgent {
+		// Multi-agent mode: use AgentMultiplexer
+		mux, err = agent.NewAgentMultiplexer(cfg, msgBus)
+		if err != nil {
+			fmt.Printf("Error creating agent multiplexer: %v\n", err)
+			os.Exit(1)
+		}
+		defaultAgentLoop = mux.GetDefaultAgent()
+
+		// Register delegate tools so agents can communicate with each other
+		mux.RegisterDelegateTools()
+
+		fmt.Printf("\n📦 Multi-Agent Mode: %d agents configured\n", len(agentConfigs))
+		for _, ac := range agentConfigs {
+			fmt.Printf("  • %s (model: %s)\n", ac.Name, cfg.ResolveAgentConfig(ac.Name).Model)
+		}
+	} else {
+		// Single-agent mode: same as before
+		provider, err := providers.CreateProvider(cfg)
+		if err != nil {
+			fmt.Printf("Error creating provider: %v\n", err)
+			os.Exit(1)
+		}
+		defaultAgentLoop = agent.NewAgentLoop(cfg, msgBus, provider)
 	}
 
-	msgBus := bus.NewMessageBus()
-	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
-
 	// Print agent startup info
+	var startupInfo map[string]interface{}
+	if mux != nil {
+		startupInfo = mux.GetStartupInfo()
+	} else {
+		startupInfo = defaultAgentLoop.GetStartupInfo()
+	}
 	fmt.Println("\n📦 Agent Status:")
-	startupInfo := agentLoop.GetStartupInfo()
 	toolsInfo := startupInfo["tools"].(map[string]interface{})
 	skillsInfo := startupInfo["skills"].(map[string]interface{})
 	fmt.Printf("  • Tools: %d loaded\n", toolsInfo["count"])
@@ -553,16 +606,16 @@ func gatewayCmd() {
 		skillsInfo["available"],
 		skillsInfo["total"])
 
-	// Log to file as well
 	logger.InfoCF("agent", "Agent initialized",
 		map[string]interface{}{
 			"tools_count":      toolsInfo["count"],
 			"skills_total":     skillsInfo["total"],
 			"skills_available": skillsInfo["available"],
+			"multi_agent":      multiAgent,
 		})
 
-	// Setup cron tool and service
-	cronService := setupCronTool(agentLoop, msgBus, cfg.WorkspacePath(), cfg.Agents.Defaults.RestrictToWorkspace)
+	// Setup cron tool and service (uses default agent)
+	cronService := setupCronTool(defaultAgentLoop, msgBus, cfg.WorkspacePath(), cfg.Agents.Defaults.RestrictToWorkspace)
 
 	heartbeatService := heartbeat.NewHeartbeatService(
 		cfg.WorkspacePath(),
@@ -571,20 +624,16 @@ func gatewayCmd() {
 	)
 	heartbeatService.SetBus(msgBus)
 	heartbeatService.SetHandler(func(prompt, channel, chatID string) *tools.ToolResult {
-		// Use cli:direct as fallback if no valid channel
 		if channel == "" || chatID == "" {
 			channel, chatID = "cli", "direct"
 		}
-		// Use ProcessHeartbeat - no session history, each heartbeat is independent
-		response, err := agentLoop.ProcessHeartbeat(context.Background(), prompt, channel, chatID)
+		response, err := defaultAgentLoop.ProcessHeartbeat(context.Background(), prompt, channel, chatID)
 		if err != nil {
 			return tools.ErrorResult(fmt.Sprintf("Heartbeat error: %v", err))
 		}
 		if response == "HEARTBEAT_OK" {
 			return tools.SilentResult("Heartbeat OK")
 		}
-		// For heartbeat, always return silent - the subagent result will be
-		// sent to user via processSystemMessage when the async task completes
 		return tools.SilentResult(response)
 	})
 
@@ -594,8 +643,12 @@ func gatewayCmd() {
 		os.Exit(1)
 	}
 
-	// Inject channel manager into agent loop for command handling
-	agentLoop.SetChannelManager(channelManager)
+	// Inject channel manager
+	if mux != nil {
+		mux.SetChannelManager(channelManager)
+	} else {
+		defaultAgentLoop.SetChannelManager(channelManager)
+	}
 
 	var transcriber *voice.GroqTranscriber
 	if cfg.Providers.Groq.APIKey != "" {
@@ -671,7 +724,12 @@ func gatewayCmd() {
 	}()
 	fmt.Printf("✓ Health endpoints available at http://%s:%d/health and /ready\n", cfg.Gateway.Host, cfg.Gateway.Port)
 
-	go agentLoop.Run(ctx)
+	// Start the agent loop(s)
+	if mux != nil {
+		go mux.Run(ctx)
+	} else {
+		go defaultAgentLoop.Run(ctx)
+	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -683,7 +741,11 @@ func gatewayCmd() {
 	deviceService.Stop()
 	heartbeatService.Stop()
 	cronService.Stop()
-	agentLoop.Stop()
+	if mux != nil {
+		mux.Stop()
+	} else {
+		defaultAgentLoop.Stop()
+	}
 	channelManager.StopAll(ctx)
 	fmt.Println("✓ Gateway stopped")
 }

@@ -448,3 +448,28 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 
 	return NewHTTPProvider(apiKey, apiBase, proxy), nil
 }
+
+// CreateProviderForAgent creates an LLM provider for a specific agent config.
+// It overrides the default provider/model in the config temporarily to reuse
+// the existing provider resolution logic.
+func CreateProviderForAgent(cfg *config.Config, agentCfg config.AgentConfig) (LLMProvider, error) {
+	// Save originals
+	origProvider := cfg.Agents.Defaults.Provider
+	origModel := cfg.Agents.Defaults.Model
+
+	// Override with agent-specific values
+	if agentCfg.Provider != "" {
+		cfg.Agents.Defaults.Provider = agentCfg.Provider
+	}
+	if agentCfg.Model != "" {
+		cfg.Agents.Defaults.Model = agentCfg.Model
+	}
+
+	provider, err := CreateProvider(cfg)
+
+	// Restore originals
+	cfg.Agents.Defaults.Provider = origProvider
+	cfg.Agents.Defaults.Model = origModel
+
+	return provider, err
+}

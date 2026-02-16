@@ -56,6 +56,7 @@ type Config struct {
 
 type AgentsConfig struct {
 	Defaults AgentDefaults `json:"defaults"`
+	Agents   []AgentConfig `json:"agents,omitempty"`
 }
 
 type AgentDefaults struct {
@@ -66,6 +67,19 @@ type AgentDefaults struct {
 	MaxTokens           int     `json:"max_tokens" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
 	Temperature         float64 `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
 	MaxToolIterations   int     `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
+}
+
+// AgentConfig defines a named agent with its own model, provider, and workspace.
+// Unset fields inherit from the "default" agent or AgentDefaults.
+type AgentConfig struct {
+	Name                string  `json:"name"`
+	Provider            string  `json:"provider,omitempty"`
+	Model               string  `json:"model,omitempty"`
+	Workspace           string  `json:"workspace,omitempty"`
+	RestrictToWorkspace *bool   `json:"restrict_to_workspace,omitempty"`
+	MaxTokens           int     `json:"max_tokens,omitempty"`
+	Temperature         float64 `json:"temperature,omitempty"`
+	MaxToolIterations   int     `json:"max_tool_iterations,omitempty"`
 }
 
 type ChannelsConfig struct {
@@ -82,16 +96,18 @@ type ChannelsConfig struct {
 }
 
 type WhatsAppConfig struct {
-	Enabled   bool                `json:"enabled" env:"PICOCLAW_CHANNELS_WHATSAPP_ENABLED"`
-	BridgeURL string              `json:"bridge_url" env:"PICOCLAW_CHANNELS_WHATSAPP_BRIDGE_URL"`
-	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_WHATSAPP_ALLOW_FROM"`
+	Enabled      bool                `json:"enabled" env:"PICOCLAW_CHANNELS_WHATSAPP_ENABLED"`
+	BridgeURL    string              `json:"bridge_url" env:"PICOCLAW_CHANNELS_WHATSAPP_BRIDGE_URL"`
+	DefaultAgent string              `json:"default_agent,omitempty"`
+	AllowFrom    FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_WHATSAPP_ALLOW_FROM"`
 }
 
 type TelegramConfig struct {
-	Enabled   bool                `json:"enabled" env:"PICOCLAW_CHANNELS_TELEGRAM_ENABLED"`
-	Token     string              `json:"token" env:"PICOCLAW_CHANNELS_TELEGRAM_TOKEN"`
-	Proxy     string              `json:"proxy" env:"PICOCLAW_CHANNELS_TELEGRAM_PROXY"`
-	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_TELEGRAM_ALLOW_FROM"`
+	Enabled      bool                `json:"enabled" env:"PICOCLAW_CHANNELS_TELEGRAM_ENABLED"`
+	Token        string              `json:"token" env:"PICOCLAW_CHANNELS_TELEGRAM_TOKEN"`
+	DefaultAgent string              `json:"default_agent,omitempty"`
+	Proxy        string              `json:"proxy" env:"PICOCLAW_CHANNELS_TELEGRAM_PROXY"`
+	AllowFrom    FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_TELEGRAM_ALLOW_FROM"`
 }
 
 type FeishuConfig struct {
@@ -100,41 +116,47 @@ type FeishuConfig struct {
 	AppSecret         string              `json:"app_secret" env:"PICOCLAW_CHANNELS_FEISHU_APP_SECRET"`
 	EncryptKey        string              `json:"encrypt_key" env:"PICOCLAW_CHANNELS_FEISHU_ENCRYPT_KEY"`
 	VerificationToken string              `json:"verification_token" env:"PICOCLAW_CHANNELS_FEISHU_VERIFICATION_TOKEN"`
+	DefaultAgent      string              `json:"default_agent,omitempty"`
 	AllowFrom         FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_FEISHU_ALLOW_FROM"`
 }
 
 type DiscordConfig struct {
-	Enabled   bool                `json:"enabled" env:"PICOCLAW_CHANNELS_DISCORD_ENABLED"`
-	Token     string              `json:"token" env:"PICOCLAW_CHANNELS_DISCORD_TOKEN"`
-	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_DISCORD_ALLOW_FROM"`
+	Enabled      bool                `json:"enabled" env:"PICOCLAW_CHANNELS_DISCORD_ENABLED"`
+	Token        string              `json:"token" env:"PICOCLAW_CHANNELS_DISCORD_TOKEN"`
+	DefaultAgent string              `json:"default_agent,omitempty"`
+	AllowFrom    FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_DISCORD_ALLOW_FROM"`
 }
 
 type MaixCamConfig struct {
-	Enabled   bool                `json:"enabled" env:"PICOCLAW_CHANNELS_MAIXCAM_ENABLED"`
-	Host      string              `json:"host" env:"PICOCLAW_CHANNELS_MAIXCAM_HOST"`
-	Port      int                 `json:"port" env:"PICOCLAW_CHANNELS_MAIXCAM_PORT"`
-	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_MAIXCAM_ALLOW_FROM"`
+	Enabled      bool                `json:"enabled" env:"PICOCLAW_CHANNELS_MAIXCAM_ENABLED"`
+	Host         string              `json:"host" env:"PICOCLAW_CHANNELS_MAIXCAM_HOST"`
+	Port         int                 `json:"port" env:"PICOCLAW_CHANNELS_MAIXCAM_PORT"`
+	DefaultAgent string              `json:"default_agent,omitempty"`
+	AllowFrom    FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_MAIXCAM_ALLOW_FROM"`
 }
 
 type QQConfig struct {
-	Enabled   bool                `json:"enabled" env:"PICOCLAW_CHANNELS_QQ_ENABLED"`
-	AppID     string              `json:"app_id" env:"PICOCLAW_CHANNELS_QQ_APP_ID"`
-	AppSecret string              `json:"app_secret" env:"PICOCLAW_CHANNELS_QQ_APP_SECRET"`
-	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_QQ_ALLOW_FROM"`
+	Enabled      bool                `json:"enabled" env:"PICOCLAW_CHANNELS_QQ_ENABLED"`
+	AppID        string              `json:"app_id" env:"PICOCLAW_CHANNELS_QQ_APP_ID"`
+	AppSecret    string              `json:"app_secret" env:"PICOCLAW_CHANNELS_QQ_APP_SECRET"`
+	DefaultAgent string              `json:"default_agent,omitempty"`
+	AllowFrom    FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_QQ_ALLOW_FROM"`
 }
 
 type DingTalkConfig struct {
 	Enabled      bool                `json:"enabled" env:"PICOCLAW_CHANNELS_DINGTALK_ENABLED"`
 	ClientID     string              `json:"client_id" env:"PICOCLAW_CHANNELS_DINGTALK_CLIENT_ID"`
 	ClientSecret string              `json:"client_secret" env:"PICOCLAW_CHANNELS_DINGTALK_CLIENT_SECRET"`
+	DefaultAgent string              `json:"default_agent,omitempty"`
 	AllowFrom    FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_DINGTALK_ALLOW_FROM"`
 }
 
 type SlackConfig struct {
-	Enabled   bool                `json:"enabled" env:"PICOCLAW_CHANNELS_SLACK_ENABLED"`
-	BotToken  string              `json:"bot_token" env:"PICOCLAW_CHANNELS_SLACK_BOT_TOKEN"`
-	AppToken  string              `json:"app_token" env:"PICOCLAW_CHANNELS_SLACK_APP_TOKEN"`
-	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_SLACK_ALLOW_FROM"`
+	Enabled      bool                `json:"enabled" env:"PICOCLAW_CHANNELS_SLACK_ENABLED"`
+	BotToken     string              `json:"bot_token" env:"PICOCLAW_CHANNELS_SLACK_BOT_TOKEN"`
+	AppToken     string              `json:"app_token" env:"PICOCLAW_CHANNELS_SLACK_APP_TOKEN"`
+	DefaultAgent string              `json:"default_agent,omitempty"`
+	AllowFrom    FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_SLACK_ALLOW_FROM"`
 }
 
 type LINEConfig struct {
@@ -144,6 +166,7 @@ type LINEConfig struct {
 	WebhookHost        string              `json:"webhook_host" env:"PICOCLAW_CHANNELS_LINE_WEBHOOK_HOST"`
 	WebhookPort        int                 `json:"webhook_port" env:"PICOCLAW_CHANNELS_LINE_WEBHOOK_PORT"`
 	WebhookPath        string              `json:"webhook_path" env:"PICOCLAW_CHANNELS_LINE_WEBHOOK_PATH"`
+	DefaultAgent       string              `json:"default_agent,omitempty"`
 	AllowFrom          FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_LINE_ALLOW_FROM"`
 }
 
@@ -153,6 +176,7 @@ type OneBotConfig struct {
 	AccessToken        string              `json:"access_token" env:"PICOCLAW_CHANNELS_ONEBOT_ACCESS_TOKEN"`
 	ReconnectInterval  int                 `json:"reconnect_interval" env:"PICOCLAW_CHANNELS_ONEBOT_RECONNECT_INTERVAL"`
 	GroupTriggerPrefix []string            `json:"group_trigger_prefix" env:"PICOCLAW_CHANNELS_ONEBOT_GROUP_TRIGGER_PREFIX"`
+	DefaultAgent       string              `json:"default_agent,omitempty"`
 	AllowFrom          FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_ONEBOT_ALLOW_FROM"`
 }
 
@@ -425,6 +449,136 @@ func (c *Config) GetAPIBase() string {
 		return c.Providers.VLLM.APIBase
 	}
 	return ""
+}
+
+// ResolveAgentConfig returns the effective AgentConfig for the given name.
+// It merges the named agent's config with the defaults from the "default" agent.
+// If no agent with that name exists, it returns the default agent config.
+func (c *Config) ResolveAgentConfig(name string) AgentConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	defaults := c.Agents.Defaults
+	defaultCfg := AgentConfig{
+		Name:              "defaults",
+		Provider:          defaults.Provider,
+		Model:             defaults.Model,
+		Workspace:         defaults.Workspace,
+		MaxTokens:         defaults.MaxTokens,
+		Temperature:       defaults.Temperature,
+		MaxToolIterations: defaults.MaxToolIterations,
+	}
+	restrict := defaults.RestrictToWorkspace
+	defaultCfg.RestrictToWorkspace = &restrict
+
+	if name == "" || name == "defaults" {
+		// Check if there's a named "defaults" agent in the list
+		for _, a := range c.Agents.Agents {
+			if a.Name == "defaults" {
+				return mergeAgentConfig(defaultCfg, a)
+			}
+		}
+		return defaultCfg
+	}
+
+	for _, a := range c.Agents.Agents {
+		if a.Name == name {
+			return mergeAgentConfig(defaultCfg, a)
+		}
+	}
+
+	return defaultCfg
+}
+
+// GetAgentConfigs returns the list of agent configs. If none are defined,
+// returns a single "default" agent derived from AgentDefaults.
+func (c *Config) GetAgentConfigs() []AgentConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if len(c.Agents.Agents) > 0 {
+		return c.Agents.Agents
+	}
+
+	defaults := c.Agents.Defaults
+	restrict := defaults.RestrictToWorkspace
+	return []AgentConfig{{
+		Name:                "defaults",
+		Provider:            defaults.Provider,
+		Model:               defaults.Model,
+		Workspace:           defaults.Workspace,
+		RestrictToWorkspace: &restrict,
+		MaxTokens:           defaults.MaxTokens,
+		Temperature:         defaults.Temperature,
+		MaxToolIterations:   defaults.MaxToolIterations,
+	}}
+}
+
+// GetChannelDefaultAgent returns the default agent name for a channel.
+func (c *Config) GetChannelDefaultAgent(channelName string) string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	switch channelName {
+	case "telegram":
+		return c.Channels.Telegram.DefaultAgent
+	case "discord":
+		return c.Channels.Discord.DefaultAgent
+	case "slack":
+		return c.Channels.Slack.DefaultAgent
+	case "whatsapp":
+		return c.Channels.WhatsApp.DefaultAgent
+	case "feishu":
+		return c.Channels.Feishu.DefaultAgent
+	case "dingtalk":
+		return c.Channels.DingTalk.DefaultAgent
+	case "line":
+		return c.Channels.LINE.DefaultAgent
+	case "qq":
+		return c.Channels.QQ.DefaultAgent
+	case "onebot":
+		return c.Channels.OneBot.DefaultAgent
+	case "maixcam":
+		return c.Channels.MaixCam.DefaultAgent
+	}
+	return ""
+}
+
+// mergeAgentConfig merges an override into a base config.
+// Non-zero/non-empty fields in override take precedence.
+func mergeAgentConfig(base, override AgentConfig) AgentConfig {
+	result := base
+	result.Name = override.Name
+	if override.Provider != "" {
+		result.Provider = override.Provider
+	}
+	if override.Model != "" {
+		result.Model = override.Model
+	}
+	if override.Workspace != "" {
+		result.Workspace = override.Workspace
+	}
+	if override.RestrictToWorkspace != nil {
+		result.RestrictToWorkspace = override.RestrictToWorkspace
+	}
+	if override.MaxTokens != 0 {
+		result.MaxTokens = override.MaxTokens
+	}
+	if override.Temperature != 0 {
+		result.Temperature = override.Temperature
+	}
+	if override.MaxToolIterations != 0 {
+		result.MaxToolIterations = override.MaxToolIterations
+	}
+	return result
+}
+
+// AgentConfigRestrictToWorkspace returns the effective RestrictToWorkspace value.
+func (a AgentConfig) GetRestrictToWorkspace() bool {
+	if a.RestrictToWorkspace != nil {
+		return *a.RestrictToWorkspace
+	}
+	return true // default to restricted
 }
 
 func expandHome(path string) string {

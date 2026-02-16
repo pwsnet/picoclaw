@@ -31,6 +31,7 @@ import (
 )
 
 type AgentLoop struct {
+	name           string // Agent name (empty or "default" for the default agent)
 	bus            *bus.MessageBus
 	provider       providers.LLMProvider
 	workspace      string
@@ -149,6 +150,95 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		tools:          toolsRegistry,
 		summarizing:    sync.Map{},
 	}
+}
+
+// NewAgentLoopFromAgentConfig creates an AgentLoop from a resolved AgentConfig.
+// Used by the AgentMultiplexer to create per-agent loops.
+func NewAgentLoopFromAgentConfig(agentCfg config.AgentConfig, fullCfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider) *AgentLoop {
+	workspace := expandAgentHome(agentCfg.Workspace)
+	os.MkdirAll(workspace, 0755)
+
+	restrict := agentCfg.GetRestrictToWorkspace()
+
+	toolsRegistry := createToolRegistry(workspace, restrict, fullCfg, msgBus)
+
+	subagentManager := tools.NewSubagentManager(provider, agentCfg.Model, workspace, msgBus)
+	subagentTools := createToolRegistry(workspace, restrict, fullCfg, msgBus)
+	subagentManager.SetTools(subagentTools)
+
+	spawnTool := tools.NewSpawnTool(subagentManager)
+	toolsRegistry.Register(spawnTool)
+
+	subagentTool := tools.NewSubagentTool(subagentManager)
+	toolsRegistry.Register(subagentTool)
+
+	sessionsManager := session.NewSessionManager(filepath.Join(workspace, "sessions"))
+	stateManager := state.NewManager(workspace)
+
+	contextBuilder := NewContextBuilder(workspace)
+	contextBuilder.SetToolsRegistry(toolsRegistry)
+
+	return &AgentLoop{
+		name:           agentCfg.Name,
+		bus:            msgBus,
+		provider:       provider,
+		workspace:      workspace,
+		model:          agentCfg.Model,
+		contextWindow:  agentCfg.MaxTokens,
+		maxIterations:  agentCfg.MaxToolIterations,
+		sessions:       sessionsManager,
+		state:          stateManager,
+		contextBuilder: contextBuilder,
+		tools:          toolsRegistry,
+		summarizing:    sync.Map{},
+	}
+}
+
+// expandAgentHome expands ~ in paths (same as config.expandHome but accessible here)
+func expandAgentHome(path string) string {
+	if path == "" {
+		return path
+	}
+	if path[0] == '~' {
+		home, _ := os.UserHomeDir()
+		if len(path) > 1 && path[1] == '/' {
+			return home + path[1:]
+		}
+		return home
+	}
+	return path
+}
+
+// Name returns the agent's name.
+func (al *AgentLoop) Name() string {
+	if al.name == "" {
+		return "defaults"
+	}
+	return al.name
+}
+
+// ProcessMessage is the public entry point for the multiplexer to route messages.
+func (al *AgentLoop) ProcessMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
+	return al.processMessage(ctx, msg)
+}
+
+// RunAgentLoop is a public wrapper for running the agent loop with custom options.
+// Used by the DelegateTool for synchronous inter-agent delegation.
+func (al *AgentLoop) RunAgentLoop(ctx context.Context, sessionKey, channel, chatID, userMessage string) (string, error) {
+	return al.runAgentLoop(ctx, processOptions{
+		SessionKey:      sessionKey,
+		Channel:         channel,
+		ChatID:          chatID,
+		UserMessage:     userMessage,
+		DefaultResponse: "I've completed processing but have no response to give.",
+		EnableSummary:   false,
+		SendResponse:    false,
+	})
+}
+
+// ToolRegistry returns the agent's tool registry.
+func (al *AgentLoop) ToolRegistry() *tools.ToolRegistry {
+	return al.tools
 }
 
 func (al *AgentLoop) Run(ctx context.Context) error {
