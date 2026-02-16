@@ -38,6 +38,9 @@ ralph/
 .ralph/
 tasks/
 
+# Worktrees
+.worktrees/
+
 # Editors
 .vscode/
 .idea/
