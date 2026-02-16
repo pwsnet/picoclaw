@@ -45,7 +45,8 @@ type AgentLoop struct {
 	contextBuilder *ContextBuilder
 	tools          *tools.ToolRegistry
 	running        atomic.Bool
-	summarizing    sync.Map // Tracks which sessions are currently being summarized
+	processMu      sync.Mutex // Serializes message processing to protect tool context state
+	summarizing    sync.Map   // Tracks which sessions are currently being summarized
 	channelManager *channels.Manager
 }
 
@@ -224,7 +225,10 @@ func (al *AgentLoop) Name() string {
 }
 
 // ProcessMessage is the public entry point for the multiplexer to route messages.
+// It acquires a per-agent mutex to serialize processing and protect tool context state.
 func (al *AgentLoop) ProcessMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
+	al.processMu.Lock()
+	defer al.processMu.Unlock()
 	return al.processMessage(ctx, msg)
 }
 

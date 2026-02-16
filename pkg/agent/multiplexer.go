@@ -101,14 +101,19 @@ func NewAgentMultiplexer(cfg *config.Config, msgBus *bus.MessageBus) (*AgentMult
 }
 
 // Run starts the multiplexer's main message routing loop.
+// Messages are dispatched concurrently — each agent serializes its own
+// processing via a per-agent mutex, but different agents run in parallel.
 func (m *AgentMultiplexer) Run(ctx context.Context) error {
 	m.mu.Lock()
 	m.running = true
 	m.mu.Unlock()
 
+	var wg sync.WaitGroup
+
 	for {
 		select {
 		case <-ctx.Done():
+			wg.Wait()
 			return nil
 		default:
 			msg, ok := m.bus.ConsumeInbound(ctx)
@@ -125,28 +130,33 @@ func (m *AgentMultiplexer) Run(ctx context.Context) error {
 				continue
 			}
 
-			response, err := agentLoop.ProcessMessage(ctx, msg)
-			if err != nil {
-				response = fmt.Sprintf("Error processing message: %v", err)
-			}
+			wg.Add(1)
+			go func(agent *AgentLoop, msg bus.InboundMessage) {
+				defer wg.Done()
 
-			if response != "" {
-				// Check if the message tool already sent a response
-				alreadySent := false
-				if tool, ok := agentLoop.ToolRegistry().Get("message"); ok {
-					if mt, ok := tool.(*tools.MessageTool); ok {
-						alreadySent = mt.HasSentInRound()
+				response, err := agent.ProcessMessage(ctx, msg)
+				if err != nil {
+					response = fmt.Sprintf("Error processing message: %v", err)
+				}
+
+				if response != "" {
+					// Check if the message tool already sent a response
+					alreadySent := false
+					if tool, ok := agent.ToolRegistry().Get("message"); ok {
+						if mt, ok := tool.(*tools.MessageTool); ok {
+							alreadySent = mt.HasSentInRound()
+						}
+					}
+
+					if !alreadySent && !constants.IsInternalChannel(msg.Channel) {
+						m.bus.PublishOutbound(bus.OutboundMessage{
+							Channel: msg.Channel,
+							ChatID:  msg.ChatID,
+							Content: response,
+						})
 					}
 				}
-
-				if !alreadySent && !constants.IsInternalChannel(msg.Channel) {
-					m.bus.PublishOutbound(bus.OutboundMessage{
-						Channel: msg.Channel,
-						ChatID:  msg.ChatID,
-						Content: response,
-					})
-				}
-			}
+			}(agentLoop, msg)
 		}
 	}
 }
