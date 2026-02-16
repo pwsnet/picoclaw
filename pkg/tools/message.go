@@ -36,11 +36,11 @@ func (t *MessageTool) Parameters() map[string]interface{} {
 			},
 			"channel": map[string]interface{}{
 				"type":        "string",
-				"description": "Optional: target channel (telegram, whatsapp, etc.)",
+				"description": "Override target channel. Do NOT provide this unless you need to send to a different channel than the current conversation. The current channel is used automatically.",
 			},
 			"chat_id": map[string]interface{}{
 				"type":        "string",
-				"description": "Optional: target chat/user ID",
+				"description": "Override target chat ID. Do NOT provide this unless you need to send to a different chat than the current conversation. The current chat ID is used automatically.",
 			},
 		},
 		"required": []string{"content"},

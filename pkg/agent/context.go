@@ -80,7 +80,9 @@ Your workspace is at: %s
 
 2. **Be helpful and accurate** - When using tools, briefly explain what you're doing.
 
-3. **Memory** - When remembering something, write to %s/memory/MEMORY.md`,
+3. **Memory** - When remembering something, write to %s/memory/MEMORY.md
+
+4. **Message tool** - When sending messages with the message tool, do NOT provide channel or chat_id parameters. They are automatically set to the current conversation's channel and chat. Only provide them if you explicitly need to send to a different channel or chat.`,
 		now, runtime, workspacePath, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
 }
 
