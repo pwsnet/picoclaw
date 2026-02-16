@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+
+	"github.com/sipeed/picoclaw/pkg/bus"
 )
 
 // DelegateExecutor is the interface used by DelegateTool to run a task on a
@@ -14,15 +16,19 @@ type DelegateExecutor interface {
 	DelegateTask(ctx context.Context, agentName, task, channel, chatID string) (string, error)
 	// AvailableAgents returns the names of all agents that can be delegated to.
 	AvailableAgents() []string
+	// DelegateBus returns the message bus for publishing async completion messages.
+	DelegateBus() *bus.MessageBus
 }
 
 // DelegateTool allows an agent to delegate a task to another named agent.
-// The target agent runs its full loop synchronously and returns the result.
+// The target agent processes the task asynchronously in the background and
+// delivers results via the message bus.
 type DelegateTool struct {
 	executor    DelegateExecutor
 	originAgent string // name of the agent that owns this tool
 	channel     string
 	chatID      string
+	callback    AsyncCallback
 }
 
 // NewDelegateTool creates a delegate tool for a specific agent.
@@ -40,7 +46,7 @@ func (t *DelegateTool) Name() string {
 }
 
 func (t *DelegateTool) Description() string {
-	return "Delegate a task to another named agent. The target agent processes the task with its own model, tools, and context, then returns the result. Use this for collaboration between specialized agents."
+	return "Delegate a task to another named agent. The target agent processes the task asynchronously in the background with its own model, tools, and context. Results are delivered to the user when ready. Use this for collaboration between specialized agents."
 }
 
 func (t *DelegateTool) Parameters() map[string]interface{} {
@@ -63,6 +69,11 @@ func (t *DelegateTool) Parameters() map[string]interface{} {
 func (t *DelegateTool) SetContext(channel, chatID string) {
 	t.channel = channel
 	t.chatID = chatID
+}
+
+// SetCallback implements AsyncTool interface for async completion notification.
+func (t *DelegateTool) SetCallback(cb AsyncCallback) {
+	t.callback = cb
 }
 
 const maxDelegationDepth = 3
@@ -95,17 +106,47 @@ func (t *DelegateTool) Execute(ctx context.Context, args map[string]interface{})
 	// Run with incremented depth
 	delegateCtx := context.WithValue(ctx, delegationDepthKey{}, depth+1)
 
-	result, err := t.executor.DelegateTask(delegateCtx, agentName, task, t.channel, t.chatID)
-	if err != nil {
-		return ErrorResult(fmt.Sprintf("Delegation to agent %q failed: %v", agentName, err))
-	}
+	// Capture channel/chatID for the goroutine
+	channel := t.channel
+	chatID := t.chatID
+	callback := t.callback
+	msgBus := t.executor.DelegateBus()
 
-	return &ToolResult{
-		ForLLM:  fmt.Sprintf("Agent %q responded:\n%s", agentName, result),
-		ForUser: "",
-		Silent:  true,
-		IsError: false,
-	}
+	// Launch async delegation in background
+	go func() {
+		result, err := t.executor.DelegateTask(delegateCtx, agentName, task, channel, chatID)
+
+		var toolResult *ToolResult
+		if err != nil {
+			toolResult = ErrorResult(fmt.Sprintf("Delegation to agent %q failed: %v", agentName, err))
+		} else {
+			toolResult = &ToolResult{
+				ForLLM:  fmt.Sprintf("Agent %q responded:\n%s", agentName, result),
+				ForUser: result,
+			}
+		}
+
+		// Invoke callback if set
+		if callback != nil {
+			callback(delegateCtx, toolResult)
+		}
+
+		// Publish completion to system channel for the agent loop to handle
+		if msgBus != nil {
+			content := fmt.Sprintf("Delegation to %q completed.\n\nResult:\n%s", agentName, result)
+			if err != nil {
+				content = fmt.Sprintf("Delegation to %q failed: %v", agentName, err)
+			}
+			msgBus.PublishInbound(bus.InboundMessage{
+				Channel:  "system",
+				SenderID: fmt.Sprintf("delegate:%s", agentName),
+				ChatID:   fmt.Sprintf("%s:%s", channel, chatID),
+				Content:  content,
+			})
+		}
+	}()
+
+	return AsyncResult(fmt.Sprintf("Task delegated to agent %q. It will process in the background.", agentName))
 }
 
 // DelegationDepth returns the current delegation depth from context.

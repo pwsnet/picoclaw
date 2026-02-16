@@ -388,17 +388,19 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 			"chat_id":   msg.ChatID,
 		})
 
-	// Parse origin channel from chat_id (format: "channel:chat_id")
-	var originChannel string
+	// Parse origin channel and chat_id from chat_id (format: "channel:chat_id")
+	var originChannel, originChatID string
 	if idx := strings.Index(msg.ChatID, ":"); idx > 0 {
 		originChannel = msg.ChatID[:idx]
+		originChatID = msg.ChatID[idx+1:]
 	} else {
-		// Fallback
 		originChannel = "cli"
+		originChatID = "direct"
 	}
 
-	// Extract subagent result from message content
+	// Extract result from message content
 	// Format: "Task 'label' completed.\n\nResult:\n<actual content>"
+	// or: "Delegation to 'name' completed.\n\nResult:\n<actual content>"
 	content := msg.Content
 	if idx := strings.Index(content, "Result:\n"); idx >= 0 {
 		content = content[idx+8:] // Extract just the result part
@@ -406,7 +408,7 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 
 	// Skip internal channels - only log, don't send to user
 	if constants.IsInternalChannel(originChannel) {
-		logger.InfoCF("agent", "Subagent completed (internal channel)",
+		logger.InfoCF("agent", "System task completed (internal channel)",
 			map[string]interface{}{
 				"sender_id":   msg.SenderID,
 				"content_len": len(content),
@@ -415,8 +417,27 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 		return "", nil
 	}
 
-	// Agent acts as dispatcher only - subagent handles user interaction via message tool
-	// Don't forward result here, subagent should use message tool to communicate with user
+	// Handle delegate completion — forward result to the user
+	if strings.HasPrefix(msg.SenderID, "delegate:") {
+		agentName := strings.TrimPrefix(msg.SenderID, "delegate:")
+		logger.InfoCF("agent", fmt.Sprintf("Delegation to %q completed", agentName),
+			map[string]interface{}{
+				"channel":     originChannel,
+				"chat_id":     originChatID,
+				"content_len": len(content),
+			})
+
+		if content != "" {
+			al.bus.PublishOutbound(bus.OutboundMessage{
+				Channel: originChannel,
+				ChatID:  originChatID,
+				Content: content,
+			})
+		}
+		return "", nil
+	}
+
+	// Subagent completion — subagent handles user interaction via message tool
 	logger.InfoCF("agent", "Subagent completed",
 		map[string]interface{}{
 			"sender_id":   msg.SenderID,
@@ -424,7 +445,6 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 			"content_len": len(content),
 		})
 
-	// Agent only logs, does not respond to user
 	return "", nil
 }
 
@@ -805,6 +825,11 @@ func (al *AgentLoop) updateToolContexts(channel, chatID string) {
 	if tool, ok := al.tools.Get("subagent"); ok {
 		if st, ok := tool.(tools.ContextualTool); ok {
 			st.SetContext(channel, chatID)
+		}
+	}
+	if tool, ok := al.tools.Get("delegate"); ok {
+		if dt, ok := tool.(tools.ContextualTool); ok {
+			dt.SetContext(channel, chatID)
 		}
 	}
 }

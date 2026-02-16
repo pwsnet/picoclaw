@@ -221,6 +221,21 @@ func TestAgentMultiplexer_RegisterDelegateTools(t *testing.T) {
 	}
 }
 
+func TestAgentMultiplexer_DelegateBus(t *testing.T) {
+	cfg, tmpDir := newTestMultiplexerConfig(t)
+	defer os.RemoveAll(tmpDir)
+
+	msgBus := bus.NewMessageBus()
+	mux, err := NewAgentMultiplexer(cfg, msgBus)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if mux.DelegateBus() != msgBus {
+		t.Fatal("DelegateBus() should return the multiplexer's message bus")
+	}
+}
+
 func TestAgentMultiplexer_GetStartupInfo(t *testing.T) {
 	cfg, tmpDir := newTestMultiplexerConfig(t)
 	defer os.RemoveAll(tmpDir)

@@ -216,6 +216,12 @@ func (m *AgentMultiplexer) RegisterToolOnAll(tool tools.Tool) {
 	}
 }
 
+// DelegateBus implements tools.DelegateExecutor.
+// It returns the message bus for publishing async completion messages.
+func (m *AgentMultiplexer) DelegateBus() *bus.MessageBus {
+	return m.bus
+}
+
 // DelegateTask implements tools.DelegateExecutor.
 // It runs a task on the named agent synchronously and returns the result.
 func (m *AgentMultiplexer) DelegateTask(ctx context.Context, agentName, task, channel, chatID string) (string, error) {
