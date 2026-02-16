@@ -53,6 +53,10 @@ func TestResolveAgentConfig_NamedAgentInheritsDefaults(t *testing.T) {
 	if resolved.MaxTokens != cfg.Agents.Defaults.MaxTokens {
 		t.Errorf("expected inherited max_tokens %d, got %d", cfg.Agents.Defaults.MaxTokens, resolved.MaxTokens)
 	}
+	// Should inherit context_window from defaults
+	if resolved.ContextWindow != cfg.Agents.Defaults.ContextWindow {
+		t.Errorf("expected inherited context_window %d, got %d", cfg.Agents.Defaults.ContextWindow, resolved.ContextWindow)
+	}
 }
 
 func TestResolveAgentConfig_NamedAgentOverridesDefaults(t *testing.T) {
@@ -65,6 +69,7 @@ func TestResolveAgentConfig_NamedAgentOverridesDefaults(t *testing.T) {
 			Workspace:           "/tmp/coder",
 			RestrictToWorkspace: &restrict,
 			MaxTokens:           16384,
+			ContextWindow:       200000,
 		},
 	}
 
@@ -80,6 +85,9 @@ func TestResolveAgentConfig_NamedAgentOverridesDefaults(t *testing.T) {
 	}
 	if resolved.MaxTokens != 16384 {
 		t.Errorf("expected max_tokens 16384, got %d", resolved.MaxTokens)
+	}
+	if resolved.ContextWindow != 200000 {
+		t.Errorf("expected context_window 200000, got %d", resolved.ContextWindow)
 	}
 }
 
@@ -201,6 +209,30 @@ func TestConfigJSON_MultiAgentParsing(t *testing.T) {
 	// Verify channel default_agent was parsed
 	if cfg.Channels.Telegram.DefaultAgent != "researcher" {
 		t.Errorf("expected telegram default_agent 'researcher', got %q", cfg.Channels.Telegram.DefaultAgent)
+	}
+}
+
+func TestDefaultConfig_ContextWindow(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Agents.Defaults.ContextWindow != 128000 {
+		t.Errorf("expected default ContextWindow 128000, got %d", cfg.Agents.Defaults.ContextWindow)
+	}
+	// ContextWindow and MaxTokens should be separate values
+	if cfg.Agents.Defaults.ContextWindow == cfg.Agents.Defaults.MaxTokens {
+		t.Error("ContextWindow and MaxTokens should not be the same value")
+	}
+}
+
+func TestResolveAgentConfig_ContextWindowBackwardCompat(t *testing.T) {
+	// Agent without context_window should inherit default 128000
+	cfg := DefaultConfig()
+	cfg.Agents.Agents = []AgentConfig{
+		{Name: "old-style", Model: "gpt-4o"},
+	}
+
+	resolved := cfg.ResolveAgentConfig("old-style")
+	if resolved.ContextWindow != 128000 {
+		t.Errorf("expected inherited context_window 128000, got %d", resolved.ContextWindow)
 	}
 }
 

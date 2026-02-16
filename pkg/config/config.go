@@ -65,6 +65,7 @@ type AgentDefaults struct {
 	Provider            string  `json:"provider" env:"PICOCLAW_AGENTS_DEFAULTS_PROVIDER"`
 	Model               string  `json:"model" env:"PICOCLAW_AGENTS_DEFAULTS_MODEL"`
 	MaxTokens           int     `json:"max_tokens" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
+	ContextWindow       int     `json:"context_window" env:"PICOCLAW_AGENTS_DEFAULTS_CONTEXT_WINDOW"`
 	Temperature         float64 `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
 	MaxToolIterations   int     `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
 }
@@ -78,6 +79,7 @@ type AgentConfig struct {
 	Workspace           string  `json:"workspace,omitempty"`
 	RestrictToWorkspace *bool   `json:"restrict_to_workspace,omitempty"`
 	MaxTokens           int     `json:"max_tokens,omitempty"`
+	ContextWindow       int     `json:"context_window,omitempty"`
 	Temperature         float64 `json:"temperature,omitempty"`
 	MaxToolIterations   int     `json:"max_tool_iterations,omitempty"`
 }
@@ -248,6 +250,7 @@ func DefaultConfig() *Config {
 				Provider:            "",
 				Model:               "glm-4.7",
 				MaxTokens:           8192,
+				ContextWindow:       128000,
 				Temperature:         0.7,
 				MaxToolIterations:   20,
 			},
@@ -465,6 +468,7 @@ func (c *Config) ResolveAgentConfig(name string) AgentConfig {
 		Model:             defaults.Model,
 		Workspace:         defaults.Workspace,
 		MaxTokens:         defaults.MaxTokens,
+		ContextWindow:     defaults.ContextWindow,
 		Temperature:       defaults.Temperature,
 		MaxToolIterations: defaults.MaxToolIterations,
 	}
@@ -509,6 +513,7 @@ func (c *Config) GetAgentConfigs() []AgentConfig {
 		Workspace:           defaults.Workspace,
 		RestrictToWorkspace: &restrict,
 		MaxTokens:           defaults.MaxTokens,
+		ContextWindow:       defaults.ContextWindow,
 		Temperature:         defaults.Temperature,
 		MaxToolIterations:   defaults.MaxToolIterations,
 	}}
@@ -563,6 +568,9 @@ func mergeAgentConfig(base, override AgentConfig) AgentConfig {
 	}
 	if override.MaxTokens != 0 {
 		result.MaxTokens = override.MaxTokens
+	}
+	if override.ContextWindow != 0 {
+		result.ContextWindow = override.ContextWindow
 	}
 	if override.Temperature != 0 {
 		result.Temperature = override.Temperature

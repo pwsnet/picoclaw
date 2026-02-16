@@ -36,7 +36,9 @@ type AgentLoop struct {
 	provider       providers.LLMProvider
 	workspace      string
 	model          string
-	contextWindow  int // Maximum context window size in tokens
+	maxTokens      int     // Maximum tokens for LLM response generation
+	temperature    float64 // Temperature for LLM calls
+	contextWindow  int     // Model context window size in tokens (for summarization thresholds)
 	maxIterations  int
 	sessions       *session.SessionManager
 	state          *state.Manager
@@ -142,7 +144,9 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		provider:       provider,
 		workspace:      workspace,
 		model:          cfg.Agents.Defaults.Model,
-		contextWindow:  cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
+		maxTokens:      cfg.Agents.Defaults.MaxTokens,
+		temperature:    cfg.Agents.Defaults.Temperature,
+		contextWindow:  cfg.Agents.Defaults.ContextWindow,
 		maxIterations:  cfg.Agents.Defaults.MaxToolIterations,
 		sessions:       sessionsManager,
 		state:          stateManager,
@@ -184,7 +188,9 @@ func NewAgentLoopFromAgentConfig(agentCfg config.AgentConfig, fullCfg *config.Co
 		provider:       provider,
 		workspace:      workspace,
 		model:          agentCfg.Model,
-		contextWindow:  agentCfg.MaxTokens,
+		maxTokens:      agentCfg.MaxTokens,
+		temperature:    agentCfg.Temperature,
+		contextWindow:  agentCfg.ContextWindow,
 		maxIterations:  agentCfg.MaxToolIterations,
 		sessions:       sessionsManager,
 		state:          stateManager,
@@ -553,8 +559,8 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				"model":             al.model,
 				"messages_count":    len(messages),
 				"tools_count":       len(providerToolDefs),
-				"max_tokens":        8192,
-				"temperature":       0.7,
+				"max_tokens":        al.maxTokens,
+				"temperature":       al.temperature,
 				"system_prompt_len": len(messages[0].Content),
 			})
 
@@ -573,8 +579,8 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		maxRetries := 2
 		for retry := 0; retry <= maxRetries; retry++ {
 			response, err = al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
-				"max_tokens":  8192,
-				"temperature": 0.7,
+				"max_tokens":  al.maxTokens,
+				"temperature": al.temperature,
 			})
 
 			if err == nil {
